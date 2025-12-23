@@ -405,6 +405,10 @@ h2.section-title {
   border-radius: 6px;
 }
 
+#referralList .owc-item:hover {
+  background-color: #d4f7d4;
+  cursor: pointer;
+}
 
 #historyList .owc-item {
   background: #f7f7f7;
@@ -726,7 +730,7 @@ h2.section-title {
   width: 300px; /* adjust as needed */
 }
 
-#owcList, #historyList {
+#owcList, #historyList, #referralList {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 8px;
@@ -752,9 +756,23 @@ h2.section-title {
 .owc-item.selected {
   background: #b2e7a9;
 }
-
-
-
+#referralList .owc-item {
+  background: #f7f7f7;
+}
+#referralList .owc-item {
+  background: transparent; /* ensure no background override */
+  padding: 8px 12px; /* spacing inside each item */
+}
+#referralList .owc-item.selected {
+  background-color: #4a90e2 !important;
+  color: #fff !important;
+  border-color: #4a90e2;
+}
+.referral-section-wrapper {
+  background: var(--card-bg);
+  padding: 10px;
+  border-radius: 20px; /* or any value you prefer for more rounded edges */
+}
 </style>
 </head>
 <body>
@@ -828,7 +846,6 @@ h2.section-title {
 <!-- BOTTOM PANELS: History Done & OWC side by side -->
 <div id="bottomListsContainer" style="display:flex; gap:12px; margin-top:16px; flex-wrap:wrap;">
   <!-- HISTORY DONE -->
-  <!-- HISTORY DONE -->
 <div id="historyContainer" style="flex:1; min-width:280px;">
   <div class="card">
     <div class="collapsible-header" style="display:flex; align-items:center; justify-content:space-between;">
@@ -841,7 +858,6 @@ h2.section-title {
           <option value="3">Table 3</option>
           <option value="4">Table 4</option>
           <option value="5">Table 5</option>
-          <option value="6">Nurse Station</option>
         </select>
         <button id="historyRestoreBtn" style="padding:4px 8px; border-radius:6px;background:#37bd5a; color:#fff; border:none;">✅</button>
         <button id="historyToggleBtn" class="toggle-btn" onclick="toggleHistory()" aria-expanded="true">
@@ -869,7 +885,6 @@ h2.section-title {
           <option value="3">Table 3</option>
           <option value="4">Table 4</option>
           <option value="5">Table 5</option>
-          <option value="6">Nurse Station</option>
         </select>
         <button id="owcRestoreBtn" style="padding:4px 8px; border-radius:6px;background:#37bd5a; color:#fff; border:none;">✅</button>
         <button id="owcToggleBtn" class="toggle-btn" onclick="toggleOWC()" aria-expanded="true" title="Toggle OWC list">
@@ -883,7 +898,50 @@ h2.section-title {
     </div>
   </div>
 </div>
+<!-- REFERRAL LIST -->
+<div id="referralContainer" style="flex:1; min-width:280px;">
+  <div class="card">
 
+    <!-- Add this wrapper -->
+    <div class="referral-section-wrapper">
+      
+      <div class="collapsible-header">
+        <h2 class="section-title">REFERRAL LIST</h2>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <select id="referralRestoreTable" class="restore-select">
+            <option value="">Select Table</option>
+            <option value="1">Table 1</option>
+            <option value="2">Table 2</option>
+            <option value="3">Table 3</option>
+            <option value="4">Table 4</option>
+            <option value="5">Table 5</option>
+          </select>
+          <button id="referralRestoreBtn" class="check-btn">✓</button>
+          <button id="referralToggleBtn"
+            class="toggle-btn"
+            onclick="toggleReferral()">
+            <span class="arrow">▾</span>
+            <span id="referralToggleLabel">Hide</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- INPUT ROW (MATCH STYLE) -->
+      <div class="controls-row">
+        <input id="referralInput"
+          placeholder="Enter referral number"
+          class="prefix-dropdown" />
+        <button class="common next-btn" onclick="addReferral()">ADD</button>
+      </div>
+
+      <div id="referralContent" class="collapsible-content">
+        <div id="referralList" class="owc-list"></div>
+      </div>
+      
+    </div> <!-- end wrapper -->
+
+  </div>
+</div>
 <div id="toastContainer"></div>
 
 
@@ -914,6 +972,7 @@ let prefixes = [];
 let seriesByPrefix = {};
 let owcList = [];
 let historyDoneList = [];
+let referralList = [];
 
 /* -------------------- UTILS -------------------- */
 const toast = (msg) => {
@@ -1104,34 +1163,46 @@ async function recallQueue(i) {
 }
 
 /* -------------------- RESTORE FUNCTIONS -------------------- */
-async function restoreQueueItem(item, tableNumber, type = "owc") {
+async function restoreQueueItem(item, tableNumber, type) {
   const el = getTableNumberEl(tableNumber);
   if (!el) return toast("Invalid table");
-  if (el.textContent !== "-" && el.textContent !== "0") return toast(`Table ${tableNumber} is already occupied`);
 
-  el.textContent = item.number;
+  if (el.textContent !== "-" && el.textContent !== "0") {
+    return toast(`Table ${tableNumber} is already occupied`);
+  }
+
   try {
+    // Restore to table
+    el.textContent = item.number;
     await set(ref(db, `tableNumbers/table${tableNumber}`), item.number);
+
     updateTableButtons(tableNumber);
     pulseTable(tableNumber, "yellow");
+
+    // Remove item from correct list
     await remove(ref(db, `${type}/${item.key}`));
-  } catch {
+
+    toast("Number restored successfully");
+  } catch (err) {
+    console.error(err);
     toast("Failed to restore number");
   }
 }
+
 
 /* -------------------- LIST RENDER -------------------- */
 function renderQueueList(list, containerId) {
   const container = document.getElementById(containerId);
   container.innerHTML = "";
+
   sortQueueList(list).forEach(item => {
     const div = document.createElement("div");
     div.className = "owc-item";
-    div.dataset.table = item.table;
     div.textContent = item.number;
     container.appendChild(div);
   });
 }
+
 /* -------------------- ADD CLICK TO HIGHLIGHT -------------------- */
 function addClickToHighlight(containerId) {
   const container = document.getElementById(containerId);
@@ -1186,6 +1257,9 @@ function toggleSection(contentId, btnId, labelId) {
 // Attach toggles to window so they can be used by buttons
 window.toggleHistory = () => toggleSection("historyContent", "historyToggleBtn", "historyToggleLabel");
 window.toggleOWC = () => toggleSection("owcContent", "owcToggleBtn", "owcToggleLabel");
+window.toggleReferral = () =>
+  toggleSection("referralContent", "referralToggleBtn", "referralToggleLabel");
+
 window.toggleHeader = () => {
   const header = document.getElementById("headerBar");
   const icon = document.getElementById("headerToggleIcon");
@@ -1310,7 +1384,7 @@ window.resetQueues = async () => {
     // Clear OWC and History lists
     await remove(ref(db, "owc"));
     await remove(ref(db, "historyDone"));
-
+await remove(ref(db, "referral"));
     // Reset series counts
     await set(ref(db, "prefixSeries"), {});
 
@@ -1346,6 +1420,47 @@ if (!selectedTable) {
 } else {
   applyTablePermissions(); // Otherwise apply saved table permissions
 }
+
+onValue(ref(db, "referral"), snap => {
+  referralList = snap.exists()
+    ? Object.entries(snap.val()).map(([key, val]) => ({ key, ...val }))
+    : [];
+  renderQueueList(referralList, "referralList");
+});
+window.addReferral = async function () {
+  const input = document.getElementById("referralInput");
+  const number = input.value.trim();
+
+  if (!number) return toast("Enter a referral number");
+
+  // ✅ Prevent duplicate referral
+  if (referralList.some(r => r.number === number)) {
+    return toast("Referral already exists");
+  }
+
+  await push(ref(db, "referral"), {
+    number,
+    timestamp: Date.now()
+  });
+
+  input.value = "";
+  toast("Referral added");
+};
+
+document.getElementById("referralRestoreBtn").onclick = () => {
+  const selected = document.querySelector("#referralList .owc-item.selected");
+  const tableNumber = parseInt(
+    document.getElementById("referralRestoreTable").value
+  );
+
+  if (!selected) return toast("Select a referral number");
+  if (!tableNumber) return toast("Select a table");
+
+  const item = referralList.find(i => i.number === selected.textContent);
+  if (item) restoreQueueItem(item, tableNumber, "referral");
+};
+addClickToHighlight("referralList");
+
 </script>
 </body>
 </html>
